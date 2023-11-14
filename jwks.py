@@ -11,7 +11,7 @@ import jwt
 
 app = Flask(__name__)
 
-# Define some constants
+# Defining Constants
 PRIVATE_KEY_FILE = "private_key.pem"
 PUBLIC_KEY_FILE = "public_key.pem"
 KEY_EXPIRY_DAYS = 30
@@ -42,12 +42,22 @@ if not os.path.exists(PRIVATE_KEY_FILE) or not os.path.exists(PUBLIC_KEY_FILE):
         )
         public_key_file.write(public_key_pem)
 
-# Load the public key
+
+
+with open(PRIVATE_KEY_FILE, "rb") as key_file:
+        private_key = serialization.load_pem_private_key(
+            key_file.read(),
+            password=None,  #Keys are not encryptd
+            backend=default_backend()
+        )
+
+
+#public key loaded
 with open(PUBLIC_KEY_FILE, "rb") as public_key_file:
     public_key_data = public_key_file.read()
     public_key = serialization.load_pem_public_key(public_key_data, backend=default_backend())
 
-# Create a JWKS entry
+#JWKS entry created
 kid = "my-key-id"
 expiry = datetime.utcnow() + timedelta(days=KEY_EXPIRY_DAYS)
 jwks_entry = {
@@ -60,21 +70,23 @@ jwks_entry = {
     "exp": int(expiry.timestamp())
 }
 
-# User data (for mock authentication)
+# User data for authentication
 users = {"userABC": "password123"}
 
-# Define the JWKS endpoint
+# Defining JWKS endpoint
 @app.route("/.well-known/jwks.json")
 def jwks():
     return jsonify(keys=[jwks_entry])
 
-# Define the authentication endpoint
+# Defining authentication endpoint
+#Used ChatGpt for this, payload involves "+" for authientication while expired key involves a "-"
 @app.route("/auth", methods=["POST"])
 def authenticate():
+    global private_key 
     username = request.json.get("username")
     password = request.json.get("password")
 
-    # Check if the user exists and the password is correct (mock authentication)
+    # Authenticaiton
     if username in users and users[username] == password:
         # Generate a JWT with the current key
         payload = {"sub": username, "exp": int((datetime.utcnow() + timedelta(days=1)).timestamp())}
@@ -86,17 +98,22 @@ def authenticate():
 # Define the endpoint to issue JWTs with an expired key
 @app.route("/auth/expired", methods=["POST"])
 def authenticate_expired():
+    global private_key
     username = request.json.get("username")
     password = request.json.get("password")
+    
 
-    # Check if the user exists and the password is correct (mock authentication)
+    # Authentication
     if username in users and users[username] == password:
         # Generate a JWT with the expired key
-        payload = {"sub": username, "exp": int(expiry.timestamp())}
+        payload = {"sub": username, "exp": int((datetime.utcnow() - timedelta(days=1)).timestamp())}
         token = jwt.encode(payload, private_key, algorithm="RS256", headers={"kid": kid})
         return jsonify({"token": token})
+        
+
     else:
         return "Unauthorized", 401
 
+#Running on port 8080
 if __name__ == "__main__":
     app.run(port=8080)
